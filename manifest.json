@@ -1,0 +1,13 @@
+{
+  "name": "Global Pharma Cure",
+  "short_name": "GPC",
+  "description": "تطبيق إدارة حسابات مؤسسة Global Pharma Cure",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FAF7F1",
+  "theme_color": "#2B3B2E",
+  "orientation": "portrait",
+  "icons": [
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
