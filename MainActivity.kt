@@ -1,9 +1,14 @@
 package com.focus.gpc_app
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.print.PrintAttributes
+import android.print.PrintManager
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -18,6 +23,40 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
+
+    // جسر بين صفحة الويب وأندرويد: بيسمح لأزرار "طباعة" و"إرسال" في التطبيق
+    // إنها تستخدم نظام الطباعة الحقيقي وقائمة المشاركة الحقيقية بتاعة أندرويد
+    inner class WebAppInterface(private val ctx: Context) {
+        @JavascriptInterface
+        fun shareText(text: String) {
+            runOnUiThread {
+                val intent = Intent(Intent.ACTION_SEND)
+                intent.type = "text/plain"
+                intent.putExtra(Intent.EXTRA_TEXT, text)
+                startActivity(Intent.createChooser(intent, "إرسال عبر"))
+            }
+        }
+
+        @JavascriptInterface
+        fun printText(text: String) {
+            runOnUiThread { doPrint(text) }
+        }
+    }
+
+    private fun doPrint(text: String) {
+        val printWebView = WebView(this)
+        printWebView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                val printManager = getSystemService(Context.PRINT_SERVICE) as PrintManager
+                val jobName = "GPC Invoice"
+                val adapter = printWebView.createPrintDocumentAdapter(jobName)
+                printManager.print(jobName, adapter, PrintAttributes.Builder().build())
+            }
+        }
+        val htmlBody = text.replace("\n", "<br>")
+        val html = "<html dir='rtl'><body style='font-family:sans-serif; font-size:16px; line-height:1.8; padding:16px;'>$htmlBody</body></html>"
+        printWebView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,6 +77,8 @@ class MainActivity : AppCompatActivity() {
 
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
+        webView.addJavascriptInterface(WebAppInterface(this), "AndroidBridge")
+
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
@@ -50,10 +91,6 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl(appUrl)
     }
 
-    // بدل ما نقفل التطبيق فورًا، بنسأل صفحة الويب الأول: "فيه حاجة تقفلها إنت؟"
-    // (مودال مفتوح، لوحة المستخدمين، أو تبويب غير الرئيسية). لو قالت "أيوة"،
-    // معناه هي اتصرفت وخلاص. لو قالت "لأ"، وقتها بس نرجع للصفحة اللي قبلها
-    // أو نقفل التطبيق فعليًا.
     override fun onBackPressed() {
         webView.evaluateJavascript(
             "(function(){ try { return window.handleAndroidBack ? window.handleAndroidBack() : false; } catch(e){ return false; } })();"

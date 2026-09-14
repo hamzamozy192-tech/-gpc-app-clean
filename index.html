@@ -110,6 +110,13 @@
   .quick-pill .qp-ic{font-size:22px;}
   .quick-pill .qp-lb{font-size:11.5px; font-weight:700; color:var(--ink-soft);}
 
+  .dash-empty{
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:60px 20px 36px; text-align:center;
+  }
+  .dash-empty-logo{width:84px; height:84px; border-radius:20px; margin-bottom:18px; box-shadow:var(--shadow);}
+  .dash-empty-title{font-size:16px; font-weight:700; color:var(--ink-soft); margin:0 0 18px;}
+
   .empty{
     text-align:center; padding:34px 16px; color:var(--ink-soft);
     background:var(--panel); border:1px dashed var(--line); border-radius:14px;
@@ -783,6 +790,7 @@ let STATE = {
   salaries: []         // {id, label, entries:[{id,region,salary,deals,commissions,absence,deductions,dealsNote,deductionsNote}]}
 };
 let ACTIVE_TAB = 'dashboard';
+let DASHBOARD_REVEALED = false; // الرئيسية تفضل فاضية لحد ما المستخدم يدوس "عرض الملخص"
 let ACTIVE_SALES_MONTH = null;
 let ACTIVE_SALARY_MONTH = null;
 
@@ -852,7 +860,11 @@ function render(){
   else if(ACTIVE_TAB==='sales') c.innerHTML = renderSales();
   else if(ACTIVE_TAB==='salaries') c.innerHTML = renderSalaries();
   attachHandlers();
-  if(ACTIVE_TAB==='dashboard') animateHeroValue();
+  if(ACTIVE_TAB==='dashboard'){
+    if(DASHBOARD_REVEALED) animateHeroValue();
+    const revealBtn = document.getElementById('revealDashboardBtn');
+    if(revealBtn) revealBtn.onclick = ()=>{ DASHBOARD_REVEALED = true; render(); };
+  }
 }
 
 /* One deliberate, orchestrated reveal: the headline number counts up once
@@ -879,6 +891,22 @@ function renderDashboard(){
   const lastSalesMonth = STATE.salesMonths[STATE.salesMonths.length-1];
   const salesTotal = lastSalesMonth ? lastSalesMonth.entries.reduce((s,e)=>s+salesEntryAfterCash(e),0) : 0;
   const salesRemaining = lastSalesMonth ? lastSalesMonth.entries.reduce((s,e)=>s+salesEntryRemaining(e),0) : 0;
+
+  if(!DASHBOARD_REVEALED){
+    return `
+    <div class="dash-empty">
+      <img src="/icon-512.png" alt="GPC" class="dash-empty-logo">
+      <p class="dash-empty-title">أهلاً بيك 👋</p>
+      <button class="btn btn-primary" id="revealDashboardBtn">عرض ملخص الحسابات</button>
+    </div>
+    <div class="quick-row">
+      <button class="quick-pill go-tab" data-go="products"><span class="qp-ic">🧴</span><span class="qp-lb">المنتجات</span></button>
+      <button class="quick-pill go-tab" data-go="manufacturing"><span class="qp-ic">🏭</span><span class="qp-lb">التصنيع</span></button>
+      <button class="quick-pill go-tab" data-go="sales"><span class="qp-ic">🧾</span><span class="qp-lb">المبيعات</span></button>
+      <button class="quick-pill go-tab" data-go="salaries"><span class="qp-ic">💰</span><span class="qp-lb">المرتبات</span></button>
+    </div>
+    `;
+  }
 
   return `
   <div class="hero-stat">
@@ -1140,6 +1168,10 @@ function renderSales(){
           <div class="kv"><span>الباقي</span><b>${fmt(rem)}</b></div>
           ${e.notes?`<div class="kv"><span>ملاحظات</span><b>${esc(e.notes)}</b></div>`:''}
           <div class="fab-row" style="margin-top:10px;">
+            <button class="btn btn-outline btn-sm print-sales-entry" data-id="${e.id}">🖨 طباعة</button>
+            <button class="btn btn-outline btn-sm send-sales-entry" data-id="${e.id}">📤 إرسال</button>
+          </div>
+          <div class="fab-row" style="margin-top:8px;">
             <button class="btn btn-ghost btn-sm edit-sales-entry" data-id="${e.id}">✏️ تعديل</button>
             <button class="btn btn-danger btn-sm del-sales-entry" data-id="${e.id}">🗑 حذف</button>
           </div>
@@ -1501,6 +1533,74 @@ function wireSales(){
     month.entries = month.entries.filter(x=>x.id!==b.dataset.id);
     await saveData('salesMonths', STATE.salesMonths); showToast('تم الحذف'); render();
   });
+  document.querySelectorAll('.print-sales-entry').forEach(b=> b.onclick = ()=>{
+    const month = STATE.salesMonths.find(m=>m.id===ACTIVE_SALES_MONTH);
+    const e = month.entries.find(x=>x.id===b.dataset.id);
+    printSalesEntry(e, month.label);
+  });
+  document.querySelectorAll('.send-sales-entry').forEach(b=> b.onclick = ()=>{
+    const month = STATE.salesMonths.find(m=>m.id===ACTIVE_SALES_MONTH);
+    const e = month.entries.find(x=>x.id===b.dataset.id);
+    sendSalesEntry(e, month.label);
+  });
+}
+
+/* Build a readable Arabic text summary of an invoice, shared by
+   print and send so both always show exactly the same numbers. */
+function salesEntryText(e, monthLabel){
+  const sub = salesEntrySubtotal(e), afterCash = salesEntryAfterCash(e), rem = salesEntryRemaining(e);
+  let lines = [];
+  lines.push('فاتورة صيدلية — ' + monthLabel);
+  lines.push(e.pharmacy + (e.address ? ' — ' + e.address : ''));
+  if(e.date) lines.push('التاريخ: ' + e.date);
+  lines.push('—————————————');
+  e.rows.forEach(r=>{
+    lines.push(r.product + ': ' + fmt(r.sold) + ' × ' + fmt(r.price) + ' (خصم ' + (num(r.discount)*100).toFixed(0) + '%) = ' + fmt(salesRowTotal(r)));
+  });
+  lines.push('—————————————');
+  lines.push('إجمالي قبل خصم الكاش: ' + fmt(sub));
+  lines.push('خصم الكاش ' + (num(e.cashDiscount)*100).toFixed(0) + '%: ' + fmt(sub-afterCash));
+  lines.push('الصافي المستحق: ' + fmt(afterCash));
+  lines.push('مدفوع: ' + fmt(e.paid));
+  lines.push('الباقي: ' + fmt(rem));
+  if(e.notes) lines.push('ملاحظات: ' + e.notes);
+  return lines.join('\n');
+}
+
+function printSalesEntry(e, monthLabel){
+  const text = salesEntryText(e, monthLabel);
+  // Inside the native Android app, AndroidBridge is injected by MainActivity.kt
+  // and hands off to Android's real print system. In a normal browser, fall
+  // back to opening a print-formatted tab.
+  if(window.AndroidBridge && window.AndroidBridge.printText){
+    window.AndroidBridge.printText(text);
+    return;
+  }
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <html dir="rtl" lang="ar"><head><meta charset="utf-8">
+    <title>فاتورة ${esc(e.pharmacy)}</title>
+    <style>
+      body{font-family:'Tajawal',Arial,sans-serif; padding:24px; white-space:pre-wrap; line-height:1.9; font-size:15px;}
+      h1{font-size:17px;}
+    </style></head>
+    <body>${esc(text)}</body></html>
+  `);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>{ win.print(); }, 300);
+}
+
+function sendSalesEntry(e, monthLabel){
+  const text = salesEntryText(e, monthLabel);
+  // Inside the native app, hand off to Android's real share sheet (WhatsApp,
+  // SMS, email, anything installed). In a normal browser, open wa.me directly.
+  if(window.AndroidBridge && window.AndroidBridge.shareText){
+    window.AndroidBridge.shareText(text);
+    return;
+  }
+  const url = 'https://wa.me/?text=' + encodeURIComponent(text);
+  window.open(url, '_blank');
 }
 function wireSalesMonthForm(){
   const f = document.getElementById('salesMonthForm');
