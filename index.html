@@ -320,9 +320,11 @@
   .inv-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
   .inv-thumb .x{position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; border:none; background:rgba(0,0,0,.65); color:#fff; font-size:11px; line-height:20px; padding:0;}
   .inv-photo-full{width:100%; border-radius:12px; border:1px solid var(--line); margin-bottom:10px; display:block;}
+  #appVer{position:fixed; bottom:3px; left:6px; z-index:5; font-size:10px; color:#8a94a6; opacity:.7; pointer-events:none; direction:ltr;}
 </style>
 </head>
 <body>
+<div id="appVer"></div>
 
 <div id="authScreen">
   <div class="auth-box">
@@ -511,6 +513,8 @@ const auth = getAuth(fbApp);
 // لو الكود ما ذكرش الاسم ده صراحةً بيدوّر على "(default)" ويطلع الخطأ:
 //   Database '(default)' not found
 const FIRESTORE_DB_ID = 'default';
+const APP_VERSION = 'v2026.11.27-b';
+document.getElementById('appVer').textContent = APP_VERSION;
 const db = getFirestore(fbApp, FIRESTORE_DB_ID);
 let currentUser = null;
 // When a brand-new account is created, the signup handler starts writing the
